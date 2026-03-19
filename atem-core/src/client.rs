@@ -202,92 +202,106 @@ impl AtemConnection {
 }
 
 impl AtemClientHandle {
-    pub fn set_program_input(&self, me: u8, video_source: VideoSource) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_program_input(me, video_source))?;
+    pub async fn set_program_input(
+        &self,
+        me: u8,
+        video_source: VideoSource,
+    ) -> Result<(), ClientError> {
+        self.controller.set_program_input(me, video_source).await?;
         Ok(())
     }
 
-    pub fn set_preview_input(&self, me: u8, video_source: VideoSource) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_preview_input(me, video_source))?;
+    pub async fn set_preview_input(
+        &self,
+        me: u8,
+        video_source: VideoSource,
+    ) -> Result<(), ClientError> {
+        self.controller.set_preview_input(me, video_source).await?;
         Ok(())
     }
 
-    pub fn cut(&self, me: u8) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.cut(me))?;
+    pub async fn cut(&self, me: u8) -> Result<(), ClientError> {
+        self.controller.cut(me).await?;
         Ok(())
     }
 
-    pub fn auto(&self, me: u8) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.auto(me))?;
+    pub async fn auto(&self, me: u8) -> Result<(), ClientError> {
+        self.controller.auto(me).await?;
         Ok(())
     }
 
-    pub fn set_next_transition(
+    pub async fn set_next_transition(
         &self,
         me: u8,
         next_transition: TransitionType,
     ) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_next_transition(me, next_transition))?;
+        self.controller
+            .set_next_transition(me, next_transition)
+            .await?;
         Ok(())
     }
 
     // ---- Phase 2 additions (AUX / DSK) ----
-    pub fn set_aux_source(
+    pub async fn set_aux_source(
         &self,
         aux_bus: u8,
         video_source: VideoSource,
     ) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_aux_source(aux_bus, video_source))?;
+        self.controller.set_aux_source(aux_bus, video_source).await?;
         Ok(())
     }
 
-    pub fn dsk_auto(&self, key: u8) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.dsk_auto(key))?;
+    pub async fn dsk_auto(&self, key: u8) -> Result<(), ClientError> {
+        self.controller.dsk_auto(key).await?;
         Ok(())
     }
 
-    pub fn set_dsk_on_air(&self, key: u8, on_air: bool) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_dsk_on_air(key, on_air))?;
+    pub async fn set_dsk_on_air(&self, key: u8, on_air: bool) -> Result<(), ClientError> {
+        self.controller.set_dsk_on_air(key, on_air).await?;
         Ok(())
     }
 
-    pub fn set_dsk_tie(&self, key: u8, tie: bool) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_dsk_tie(key, tie))?;
+    pub async fn set_dsk_tie(&self, key: u8, tie: bool) -> Result<(), ClientError> {
+        self.controller.set_dsk_tie(key, tie).await?;
         Ok(())
     }
 
-    pub fn set_dsk_cut_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_dsk_cut_source(key, source))?;
+    pub async fn set_dsk_cut_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
+        self.controller.set_dsk_cut_source(key, source).await?;
         Ok(())
     }
 
-    pub fn set_dsk_fill_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_dsk_fill_source(key, source))?;
+    pub async fn set_dsk_fill_source(
+        &self,
+        key: u8,
+        source: VideoSource,
+    ) -> Result<(), ClientError> {
+        self.controller.set_dsk_fill_source(key, source).await?;
         Ok(())
     }
 
-    pub fn set_dsk_rate(&self, key: u8, rate: u8) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.set_dsk_rate(key, rate))?;
+    pub async fn set_dsk_rate(&self, key: u8, rate: u8) -> Result<(), ClientError> {
+        self.controller.set_dsk_rate(key, rate).await?;
         Ok(())
     }
 
-    pub fn cut_black(&self, me: u8, black: bool) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.cut_black(me, black))?;
+    pub async fn cut_black(&self, me: u8, black: bool) -> Result<(), ClientError> {
+        self.controller.cut_black(me, black).await?;
         Ok(())
     }
 
-    pub fn toggle_auto_black(&self, me: u8) -> Result<(), ClientError> {
-        tokio_runtime().block_on(self.controller.toggle_auto_black(me))?;
+    pub async fn toggle_auto_black(&self, me: u8) -> Result<(), ClientError> {
+        self.controller.toggle_auto_black(me).await?;
         Ok(())
     }
 }
 
-pub fn connect_udp(ip: &str, port: u16, reconnect: bool) -> Result<AtemConnection, ClientError> {
+pub async fn connect_udp(ip: &str, port: u16, reconnect: bool) -> Result<AtemConnection, ClientError> {
     let ip: Ipv4Addr = ip
         .parse()
         .map_err(|_| ClientError::InvalidIp(ip.to_string()))?;
     let addr = SocketAddrV4::new(ip, port);
-    tokio_runtime().block_on(connect_socketaddr(addr, reconnect))
+    connect_socketaddr(addr, reconnect).await
 }
 
 fn tokio_runtime() -> &'static Runtime {

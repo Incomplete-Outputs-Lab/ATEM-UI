@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
   "atem-core",
-  "atem-ui",
+  "src-tauri",
 ]
 
 [workspace.package]
