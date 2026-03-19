@@ -1,0 +1,11 @@
+[package]
+name = "atem-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+necromancer = { git = "https://github.com/Incomplete-Outputs-Lab/necromancer", branch = "feat/streamdeck", package = "necromancer" }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tracing = "0.1"
+thiserror = "2"
+
