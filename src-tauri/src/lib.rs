@@ -105,7 +105,12 @@ fn snapshot_to_dto(snapshot: &AtemSnapshot) -> AtemSnapshotDto {
     let dsk_sources = snapshot
         .dsk_sources
         .iter()
-        .map(|(k, (fill, cut))| (k.to_string(), (stringify_source(fill), stringify_source(cut))))
+        .map(|(k, (fill, cut))| {
+            (
+                k.to_string(),
+                (stringify_source(fill), stringify_source(cut)),
+            )
+        })
         .collect::<HashMap<_, _>>();
 
     let dsk_state = snapshot
@@ -141,8 +146,16 @@ fn snapshot_to_dto(snapshot: &AtemSnapshot) -> AtemSnapshotDto {
         initialisation_complete: snapshot.initialisation_complete,
         mes_count: snapshot.mes_count,
         aux_count: snapshot.aux_count,
-        program_sources: snapshot.program_sources.iter().map(stringify_source).collect(),
-        preview_sources: snapshot.preview_sources.iter().map(stringify_source).collect(),
+        program_sources: snapshot
+            .program_sources
+            .iter()
+            .map(stringify_source)
+            .collect(),
+        preview_sources: snapshot
+            .preview_sources
+            .iter()
+            .map(stringify_source)
+            .collect(),
         available_sources: snapshot
             .available_sources
             .iter()
@@ -217,7 +230,10 @@ async fn emit_snapshot_event(app: &AppHandle, connection: &AtemConnection) {
     let _ = app.emit("atem://snapshot", payload);
 }
 
-fn spawn_event_pump(app: AppHandle, connection: &AtemConnection) -> tauri::async_runtime::JoinHandle<()> {
+fn spawn_event_pump(
+    app: AppHandle,
+    connection: &AtemConnection,
+) -> tauri::async_runtime::JoinHandle<()> {
     let mut snapshot_rx = connection.snapshot_rx.clone();
     let mut status_rx = connection.status_rx.clone();
     tauri::async_runtime::spawn(async move {
@@ -244,7 +260,10 @@ fn spawn_event_pump(app: AppHandle, connection: &AtemConnection) -> tauri::async
     })
 }
 
-fn source_by_index(connection: &AtemConnection, source_index: usize) -> Result<VideoSource, String> {
+fn source_by_index(
+    connection: &AtemConnection,
+    source_index: usize,
+) -> Result<VideoSource, String> {
     connection
         .snapshot_rx
         .borrow()

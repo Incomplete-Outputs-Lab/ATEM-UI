@@ -247,7 +247,9 @@ impl AtemClientHandle {
         aux_bus: u8,
         video_source: VideoSource,
     ) -> Result<(), ClientError> {
-        self.controller.set_aux_source(aux_bus, video_source).await?;
+        self.controller
+            .set_aux_source(aux_bus, video_source)
+            .await?;
         Ok(())
     }
 
@@ -266,7 +268,11 @@ impl AtemClientHandle {
         Ok(())
     }
 
-    pub async fn set_dsk_cut_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
+    pub async fn set_dsk_cut_source(
+        &self,
+        key: u8,
+        source: VideoSource,
+    ) -> Result<(), ClientError> {
         self.controller.set_dsk_cut_source(key, source).await?;
         Ok(())
     }
@@ -296,7 +302,11 @@ impl AtemClientHandle {
     }
 }
 
-pub async fn connect_udp(ip: &str, port: u16, reconnect: bool) -> Result<AtemConnection, ClientError> {
+pub async fn connect_udp(
+    ip: &str,
+    port: u16,
+    reconnect: bool,
+) -> Result<AtemConnection, ClientError> {
     let ip: Ipv4Addr = ip
         .parse()
         .map_err(|_| ClientError::InvalidIp(ip.to_string()))?;
