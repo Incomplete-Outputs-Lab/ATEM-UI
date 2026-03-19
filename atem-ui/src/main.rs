@@ -768,6 +768,9 @@ impl Render for AtemUiView {
 
 fn main() {
     Application::new().run(|cx: &mut App| {
+        // Required for gpui-component widgets (e.g. Theme global) to be available.
+        gpui_component::init(cx);
+
         let bounds = Bounds::centered(None, size(px(720.), px(520.)), cx);
         cx.open_window(
             WindowOptions {
@@ -778,7 +781,7 @@ fn main() {
                 let ip_input =
                     cx.new(|cx| InputState::new(window, cx).default_value("192.168.1.50"));
 
-                cx.new(|_| AtemUiView {
+                let view = cx.new(|_| AtemUiView {
                     ip_input,
                     status: ConnectionStatus::Disconnected,
                     snapshot: None,
@@ -790,7 +793,10 @@ fn main() {
                     selected_aux_bus: 0,
                     selected_dsk_key_index: 0,
                     dsk_rate: 20,
-                })
+                });
+
+                // gpui-component requires a Root view as the first window layer.
+                cx.new(|cx| gpui_component::Root::new(view, window, cx))
             },
         )
         .unwrap();
