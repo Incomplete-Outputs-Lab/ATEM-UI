@@ -5,11 +5,15 @@ use necromancer::{
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddrV4},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 use thiserror::Error;
 use tokio::sync::watch;
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::{
+    runtime::{Builder, Runtime},
+    sync::broadcast,
+    task::JoinHandle,
+};
 use tracing::{debug, info};
 
 #[derive(Debug, Error)]
@@ -47,6 +51,37 @@ pub struct AtemSnapshot {
     ///
     /// This allows the UI to offer DSK controls only when supported.
     pub dsk_keys: Vec<u8>,
+    /// DSK source assignments: key -> (fill, cut)
+    pub dsk_sources: HashMap<u8, (VideoSource, VideoSource)>,
+    /// DSK runtime state flags by key.
+    pub dsk_state: HashMap<u8, DskRuntimeSnapshot>,
+    /// DSK configuration properties by key.
+    pub dsk_properties: HashMap<u8, DskPropertiesSnapshot>,
+    /// Transition position percent-like value (0..=10000) by ME.
+    pub transition_position: Vec<u16>,
+    /// Whether transition is currently moving by ME.
+    pub transition_in_progress: Vec<bool>,
+    /// Fade-to-black fully black status by ME.
+    pub ftb_fully_black: Vec<bool>,
+    /// Fade-to-black in-transition status by ME.
+    pub ftb_in_transition: Vec<bool>,
+    /// Fade-to-black frames remaining by ME.
+    pub ftb_frames_remaining: Vec<u8>,
+    /// Fade-to-black rate by ME.
+    pub ftb_rate: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DskPropertiesSnapshot {
+    pub tie: bool,
+    pub rate: u8,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DskRuntimeSnapshot {
+    pub on_air: bool,
+    pub in_transition: bool,
+    pub remaining_frames: u8,
 }
 
 impl AtemSnapshot {
@@ -65,6 +100,65 @@ impl AtemSnapshot {
 
         let tally_by_source = state.tally_by_source.clone();
         let dsk_keys = state.dsk_sources.keys().copied().collect::<Vec<_>>();
+        let dsk_sources = state.dsk_sources.clone();
+        let dsk_state = state
+            .dsk_state
+            .iter()
+            .map(|(k, v)| {
+                (
+                    *k,
+                    DskRuntimeSnapshot {
+                        on_air: v.on_air,
+                        in_transition: v.in_transition,
+                        remaining_frames: v.remaining_frames,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+        let dsk_properties = state
+            .dsk_properties
+            .iter()
+            .map(|(k, v)| {
+                (
+                    *k,
+                    DskPropertiesSnapshot {
+                        tie: v.tie,
+                        rate: v.rate,
+                    },
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        let transition_position = (0..mes_count)
+            .map(|me| {
+                state
+                    .transition_position
+                    .get(&me)
+                    .map(|p| p.position)
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        let transition_in_progress = (0..mes_count)
+            .map(|me| {
+                state
+                    .transition_position
+                    .get(&me)
+                    .map(|p| p.in_progress)
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+
+        let mut ftb_fully_black = Vec::with_capacity(mes_count as usize);
+        let mut ftb_in_transition = Vec::with_capacity(mes_count as usize);
+        let mut ftb_frames_remaining = Vec::with_capacity(mes_count as usize);
+        let mut ftb_rate = Vec::with_capacity(mes_count as usize);
+        for me in 0..mes_count {
+            let status = state.get_fade_to_black_status(me).unwrap_or_default();
+            ftb_fully_black.push(status.fully_black);
+            ftb_in_transition.push(status.in_transition);
+            ftb_frames_remaining.push(status.frames_remaining);
+            ftb_rate.push(state.get_fade_to_black_rate(me).unwrap_or_default());
+        }
 
         Self {
             initialisation_complete: state.initialisation_complete,
@@ -75,6 +169,15 @@ impl AtemSnapshot {
             available_sources,
             tally_by_source,
             dsk_keys,
+            dsk_sources,
+            dsk_state,
+            dsk_properties,
+            transition_position,
+            transition_in_progress,
+            ftb_fully_black,
+            ftb_in_transition,
+            ftb_frames_remaining,
+            ftb_rate,
         }
     }
 }
@@ -99,106 +202,103 @@ impl AtemConnection {
 }
 
 impl AtemClientHandle {
-    pub async fn set_program_input(
-        &self,
-        me: u8,
-        video_source: VideoSource,
-    ) -> Result<(), ClientError> {
-        self.controller.set_program_input(me, video_source).await?;
+    pub fn set_program_input(&self, me: u8, video_source: VideoSource) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_program_input(me, video_source))?;
         Ok(())
     }
 
-    pub async fn set_preview_input(
-        &self,
-        me: u8,
-        video_source: VideoSource,
-    ) -> Result<(), ClientError> {
-        self.controller.set_preview_input(me, video_source).await?;
+    pub fn set_preview_input(&self, me: u8, video_source: VideoSource) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_preview_input(me, video_source))?;
         Ok(())
     }
 
-    pub async fn cut(&self, me: u8) -> Result<(), ClientError> {
-        self.controller.cut(me).await?;
+    pub fn cut(&self, me: u8) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.cut(me))?;
         Ok(())
     }
 
-    pub async fn auto(&self, me: u8) -> Result<(), ClientError> {
-        self.controller.auto(me).await?;
+    pub fn auto(&self, me: u8) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.auto(me))?;
         Ok(())
     }
 
-    pub async fn set_next_transition(
+    pub fn set_next_transition(
         &self,
         me: u8,
         next_transition: TransitionType,
     ) -> Result<(), ClientError> {
-        self.controller
-            .set_next_transition(me, next_transition)
-            .await?;
+        tokio_runtime().block_on(self.controller.set_next_transition(me, next_transition))?;
         Ok(())
     }
 
     // ---- Phase 2 additions (AUX / DSK) ----
-    pub async fn set_aux_source(
+    pub fn set_aux_source(
         &self,
         aux_bus: u8,
         video_source: VideoSource,
     ) -> Result<(), ClientError> {
-        self.controller
-            .set_aux_source(aux_bus, video_source)
-            .await?;
+        tokio_runtime().block_on(self.controller.set_aux_source(aux_bus, video_source))?;
         Ok(())
     }
 
-    pub async fn dsk_auto(&self, key: u8) -> Result<(), ClientError> {
-        self.controller.dsk_auto(key).await?;
+    pub fn dsk_auto(&self, key: u8) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.dsk_auto(key))?;
         Ok(())
     }
 
-    pub async fn set_dsk_on_air(&self, key: u8, on_air: bool) -> Result<(), ClientError> {
-        self.controller.set_dsk_on_air(key, on_air).await?;
+    pub fn set_dsk_on_air(&self, key: u8, on_air: bool) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_dsk_on_air(key, on_air))?;
         Ok(())
     }
 
-    pub async fn set_dsk_tie(&self, key: u8, tie: bool) -> Result<(), ClientError> {
-        self.controller.set_dsk_tie(key, tie).await?;
+    pub fn set_dsk_tie(&self, key: u8, tie: bool) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_dsk_tie(key, tie))?;
         Ok(())
     }
 
-    pub async fn set_dsk_cut_source(
-        &self,
-        key: u8,
-        source: VideoSource,
-    ) -> Result<(), ClientError> {
-        self.controller.set_dsk_cut_source(key, source).await?;
+    pub fn set_dsk_cut_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_dsk_cut_source(key, source))?;
         Ok(())
     }
 
-    pub async fn set_dsk_fill_source(
-        &self,
-        key: u8,
-        source: VideoSource,
-    ) -> Result<(), ClientError> {
-        self.controller.set_dsk_fill_source(key, source).await?;
+    pub fn set_dsk_fill_source(&self, key: u8, source: VideoSource) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_dsk_fill_source(key, source))?;
         Ok(())
     }
 
-    pub async fn set_dsk_rate(&self, key: u8, rate: u8) -> Result<(), ClientError> {
-        self.controller.set_dsk_rate(key, rate).await?;
+    pub fn set_dsk_rate(&self, key: u8, rate: u8) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.set_dsk_rate(key, rate))?;
+        Ok(())
+    }
+
+    pub fn cut_black(&self, me: u8, black: bool) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.cut_black(me, black))?;
+        Ok(())
+    }
+
+    pub fn toggle_auto_black(&self, me: u8) -> Result<(), ClientError> {
+        tokio_runtime().block_on(self.controller.toggle_auto_black(me))?;
         Ok(())
     }
 }
 
-pub async fn connect_udp(
-    ip: &str,
-    port: u16,
-    reconnect: bool,
-) -> Result<AtemConnection, ClientError> {
+pub fn connect_udp(ip: &str, port: u16, reconnect: bool) -> Result<AtemConnection, ClientError> {
     let ip: Ipv4Addr = ip
         .parse()
         .map_err(|_| ClientError::InvalidIp(ip.to_string()))?;
     let addr = SocketAddrV4::new(ip, port);
-    connect_socketaddr(addr, reconnect).await
+    tokio_runtime().block_on(connect_socketaddr(addr, reconnect))
+}
+
+fn tokio_runtime() -> &'static Runtime {
+    static TOKIO_RUNTIME: OnceLock<Runtime> = OnceLock::new();
+    TOKIO_RUNTIME.get_or_init(|| {
+        Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("failed to create internal tokio runtime for atem-core")
+    })
 }
 
 async fn connect_socketaddr(
@@ -217,7 +317,7 @@ async fn connect_socketaddr(
 
     let mut state_updates = controller.state_update_events();
     let controller_bg = controller.clone();
-    let bg_task = tokio::spawn(async move {
+    let bg_task = tokio_runtime().spawn(async move {
         loop {
             match state_updates.recv().await {
                 Ok((_txn, _update)) => {
