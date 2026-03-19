@@ -35,6 +35,13 @@ struct DskRuntimeDto {
 }
 
 #[derive(Debug, Clone, Serialize)]
+struct SourceItemDto {
+    source_index: usize,
+    source_id: u16,
+    source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 struct AtemSnapshotDto {
     initialisation_complete: bool,
     mes_count: u8,
@@ -42,6 +49,9 @@ struct AtemSnapshotDto {
     program_sources: Vec<String>,
     preview_sources: Vec<String>,
     available_sources: Vec<String>,
+    program_source_ids: Vec<u16>,
+    preview_source_ids: Vec<u16>,
+    available_source_items: Vec<SourceItemDto>,
     tally_by_source: HashMap<String, Vec<String>>,
     dsk_keys: Vec<u8>,
     dsk_sources: HashMap<String, (String, String)>,
@@ -70,6 +80,10 @@ enum ConnectionStatusDto {
 
 fn stringify_source(source: &VideoSource) -> String {
     format!("{source:?}")
+}
+
+fn source_id(source: &VideoSource) -> u16 {
+    *source as u16
 }
 
 fn snapshot_to_dto(snapshot: &AtemSnapshot) -> AtemSnapshotDto {
@@ -134,6 +148,18 @@ fn snapshot_to_dto(snapshot: &AtemSnapshot) -> AtemSnapshotDto {
             .iter()
             .map(stringify_source)
             .collect(),
+        program_source_ids: snapshot.program_sources.iter().map(source_id).collect(),
+        preview_source_ids: snapshot.preview_sources.iter().map(source_id).collect(),
+        available_source_items: snapshot
+            .available_sources
+            .iter()
+            .enumerate()
+            .map(|(source_index, source)| SourceItemDto {
+                source_index,
+                source_id: source_id(source),
+                source_name: stringify_source(source),
+            })
+            .collect(),
         tally_by_source,
         dsk_keys: snapshot.dsk_keys.clone(),
         dsk_sources,
@@ -164,6 +190,9 @@ fn empty_snapshot_dto() -> AtemSnapshotDto {
         program_sources: Vec::new(),
         preview_sources: Vec::new(),
         available_sources: Vec::new(),
+        program_source_ids: Vec::new(),
+        preview_source_ids: Vec::new(),
+        available_source_items: Vec::new(),
         tally_by_source: HashMap::new(),
         dsk_keys: Vec::new(),
         dsk_sources: HashMap::new(),
@@ -379,6 +408,81 @@ async fn set_next_transition(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn dsk_auto(state: State<'_, AppState>, key: u8) -> Result<(), String> {
+    let inner = state.inner.lock().await;
+    let managed = inner
+        .connection
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    managed
+        .connection
+        .client
+        .dsk_auto(key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_dsk_on_air(state: State<'_, AppState>, key: u8, on_air: bool) -> Result<(), String> {
+    let inner = state.inner.lock().await;
+    let managed = inner
+        .connection
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    managed
+        .connection
+        .client
+        .set_dsk_on_air(key, on_air)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_dsk_tie(state: State<'_, AppState>, key: u8, tie: bool) -> Result<(), String> {
+    let inner = state.inner.lock().await;
+    let managed = inner
+        .connection
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    managed
+        .connection
+        .client
+        .set_dsk_tie(key, tie)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_dsk_rate(state: State<'_, AppState>, key: u8, rate: u8) -> Result<(), String> {
+    let inner = state.inner.lock().await;
+    let managed = inner
+        .connection
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    managed
+        .connection
+        .client
+        .set_dsk_rate(key, rate)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn toggle_auto_black(state: State<'_, AppState>, me: u8) -> Result<(), String> {
+    let inner = state.inner.lock().await;
+    let managed = inner
+        .connection
+        .as_ref()
+        .ok_or_else(|| "not connected".to_string())?;
+    managed
+        .connection
+        .client
+        .toggle_auto_black(me)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -394,7 +498,12 @@ pub fn run() {
             set_preview_input_by_index,
             cut,
             auto_transition,
-            set_next_transition
+            set_next_transition,
+            dsk_auto,
+            set_dsk_on_air,
+            set_dsk_tie,
+            set_dsk_rate,
+            toggle_auto_black
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
