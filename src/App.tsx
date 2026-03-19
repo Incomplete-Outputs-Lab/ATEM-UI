@@ -342,7 +342,10 @@ export default function App() {
               >
                 ON AIR
               </button>
-              <button className="switch-key" onClick={() => run(async () => dskAuto(dskKey))}>
+              <button
+                className={`switch-key ${dskRuntime?.in_transition ? "lit-amber glow-amber" : ""}`}
+                onClick={() => run(async () => dskAuto(dskKey))}
+              >
                 AUTO
               </button>
             </article>
@@ -351,7 +354,9 @@ export default function App() {
               <h2>Fade to Black</h2>
               <div className="rate-display">{`${Math.floor((snapshot.ftb_rate[meIndex] ?? 0) / 60)}:${String((snapshot.ftb_rate[meIndex] ?? 0) % 60).padStart(2, "0")}`}</div>
               <button
-                className={`switch-key ${snapshot.ftb_fully_black[meIndex] ? "active-red glow-red" : ""}`}
+                className={`switch-key ${
+                  snapshot.ftb_fully_black[meIndex] || snapshot.ftb_in_transition[meIndex] ? "active-red glow-red" : ""
+                }`}
                 onClick={() => run(async () => toggleAutoBlack(meIndex))}
               >
                 FTB
