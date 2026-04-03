@@ -1,0 +1,6 @@
+[env]
+# bindgenに64bitを強制（Windowsでの不整合対策）
+BINDGEN_EXTRA_CLANG_ARGS = "-m64"
+
+# Linux環境でSDKの場所を明示
+# NDI_SDK_DIR = "/usr/share/NDI SDK for Linux"
